@@ -1,0 +1,124 @@
+version: '3.9'
+
+services:
+  # ============================================================================
+  # Next.js Application (Frontend + Backend + API)
+  # ============================================================================
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: promptmind-app
+    ports:
+      - "3000:3000"
+    environment:
+      # Node
+      - NODE_ENV=production
+      
+      # Database
+      - DATABASE_URL=postgresql://promptmind:secure_password_123@postgres:5432/promptmind_db
+      
+      # Claude API
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      
+      # Blockchain (Arbitrum)
+      - ARBITRUM_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
+      - ARBITRUM_CHAINID=421614
+      - PRIVATE_KEY=${PRIVATE_KEY}
+      - NEXT_PUBLIC_CONTRACT_ADDRESS=${CONTRACT_ADDRESS}
+      - NEXT_PUBLIC_ARBITRUM_RPC=https://sepolia-rollup.arbitrum.io/rpc
+      
+      # JWT & Security
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRY=900
+      - REFRESH_TOKEN_EXPIRY=604800
+      
+      # CORS
+      - CORS_ORIGIN=http://localhost:3000
+      
+      # Redis (optional, for production)
+      - REDIS_URL=redis://redis:6379
+      
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    networks:
+      - promptmind-network
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # PostgreSQL Database
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: promptmind-postgres
+    
+    environment:
+      POSTGRES_USER: promptmind
+      POSTGRES_PASSWORD: secure_password_123
+      POSTGRES_DB: promptmind_db
+      POSTGRES_INITDB_ARGS: "-c max_connections=200"
+    
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    
+    ports:
+      - "5432:5432"
+    
+    networks:
+      - promptmind-network
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promptmind -d promptmind_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================================
+  # Redis Cache (Optional, for production scalability)
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: promptmind-redis
+    
+    ports:
+      - "6379:6379"
+    
+    volumes:
+      - redis_data:/data
+    
+    networks:
+      - promptmind-network
+    
+    restart: unless-stopped
+    
+    command: redis-server --appendonly yes --requirepass redis_secure_password
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  promptmind-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

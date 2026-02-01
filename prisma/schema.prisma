@@ -1,0 +1,266 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================================================
+// User Model (Web3 Wallets)
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  walletAddress String    @unique @db.VarChar(255)
+  username      String?   @unique
+  email         String?   @unique
+  
+  // Profile
+  avatar        String?
+  bio           String?
+  
+  // Web3
+  chainId       Int       @default(42161) // Arbitrum
+  nonce         String?   // For SIWE
+  
+  // Metadata
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  prompts       Prompt[]
+  trades        Trade[]
+  breeding      BreedingEvent[]
+  auditLogs     AuditLog[]
+  sessions      Session[]
+  
+  @@index([walletAddress])
+  @@index([email])
+  @@map("users")
+}
+
+// ============================================================================
+// Session Model (JWT Token Management)
+// ============================================================================
+
+model Session {
+  id            String    @id @default(cuid())
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  
+  token         String    @unique
+  expiresAt     DateTime
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ============================================================================
+// Prompt Model
+// ============================================================================
+
+model Prompt {
+  id              String    @id @default(cuid())
+  title           String    @db.VarChar(255)
+  description     String    @db.Text
+  category        String    @db.VarChar(100) @default("general")
+  
+  // Creator
+  creator         User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId       String
+  
+  // Quality & Pricing
+  qualityScore    Int       @default(50) // 1-100
+  tokenPrice      Decimal   @default(1.0) @db.Decimal(18, 8)
+  tokenSupply     Int       @default(1000)
+  tokenCirculation Int      @default(0)
+  
+  // Usage
+  totalUsage      Int       @default(0)
+  totalRevenue    Decimal   @default(0) @db.Decimal(18, 8)
+  
+  // Blockchain
+  contractAddress String?   @unique @db.VarChar(255)
+  contractTxHash  String?   @db.VarChar(255)
+  
+  // Breeding
+  parentId1       String?
+  parentId2       String?
+  isHybrid        Boolean   @default(false)
+  parents         Prompt[]  @relation("BreedingChild")
+  children        Prompt[]  @relation("BreedingChild")
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  trades          Trade[]
+  breedingEvents  BreedingEvent[]
+  
+  @@index([creatorId])
+  @@index([qualityScore])
+  @@index([category])
+  @@index([contractAddress])
+  @@map("prompts")
+}
+
+// ============================================================================
+// Trade Model (Buy/Sell Tokens)
+// ============================================================================
+
+model Trade {
+  id          String    @id @default(cuid())
+  
+  prompt      Prompt    @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  promptId    String
+  
+  trader      User      @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  traderId    String
+  
+  // Trade Details
+  action      String    @db.VarChar(10) // 'buy' or 'sell'
+  amount      Int       // tokens
+  price       Decimal   @db.Decimal(18, 8) // price per token
+  total       Decimal   @db.Decimal(18, 8) // amount * price
+  
+  // Fee Distribution
+  creatorFee  Decimal   @db.Decimal(18, 8)
+  protocolFee Decimal   @db.Decimal(18, 8)
+  validatorFee Decimal  @db.Decimal(18, 8)
+  
+  // Blockchain
+  txHash      String?   @unique @db.VarChar(255)
+  blockNumber Int?
+  status      String    @db.VarChar(20) @default("pending") // pending, confirmed, failed
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  
+  @@index([promptId])
+  @@index([traderId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("trades")
+}
+
+// ============================================================================
+// Breeding Event Model
+// ============================================================================
+
+model BreedingEvent {
+  id        String    @id @default(cuid())
+  
+  parent1Id String
+  parent2Id String
+  breeder   User      @relation(fields: [breederId], references: [id], onDelete: Cascade)
+  breederId String
+  
+  // Child Details
+  childTitle String   @db.VarChar(255)
+  childDescription String @db.Text
+  childQuality Int
+  
+  // Child Prompt (created after breeding)
+  childPromptId String?
+  
+  // Royalty Setup
+  royaltyPercent Int @default(20) // 20% for parents
+  
+  // Blockchain
+  txHash    String?   @unique @db.VarChar(255)
+  status    String    @db.VarChar(20) @default("pending") // pending, confirmed, failed
+  
+  // Cooldown (prevent abuse)
+  cooldownUntil DateTime?
+  
+  // Timestamps
+  createdAt DateTime  @default(now())
+  
+  @@index([breederId])
+  @@index([status])
+  @@map("breeding_events")
+}
+
+// ============================================================================
+// Audit Log Model (Immutable Security Logs)
+// ============================================================================
+
+model AuditLog {
+  id        String    @id @default(cuid())
+  
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  
+  action    String    @db.VarChar(100) // 'trade', 'create_prompt', 'breed', etc
+  resource  String?   @db.VarChar(255) // prompt ID, trade ID, etc
+  details   Json      // Full event data
+  
+  // Request Info
+  ipAddress String    @db.VarChar(45) // IPv4 or IPv6
+  userAgent String    @db.Text
+  
+  // Security
+  success   Boolean   @default(true)
+  errorMessage String?
+  
+  // Timestamps (immutable - no updates)
+  createdAt DateTime  @default(now())
+  
+  @@index([userId, action])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================================
+// Rate Limit Model (Anti-DDoS)
+// ============================================================================
+
+model RateLimit {
+  id        String    @id @default(cuid())
+  identifier String   @db.VarChar(255) // IP or user ID
+  endpoint  String    @db.VarChar(255) // API path
+  count     Int       @default(1)
+  
+  resetAt   DateTime
+  
+  createdAt DateTime  @default(now())
+  
+  @@unique([identifier, endpoint])
+  @@index([resetAt])
+  @@map("rate_limits")
+}
+
+// ============================================================================
+// Suspicious Activity Model (Fraud Detection)
+// ============================================================================
+
+model SuspiciousActivity {
+  id        String    @id @default(cuid())
+  
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  
+  activityType String @db.VarChar(100) // 'high_volume_trading', 'price_manipulation', etc
+  severity   String   @db.VarChar(20)  // 'low', 'medium', 'high', 'critical'
+  details    Json
+  
+  resolved   Boolean  @default(false)
+  resolution String?
+  
+  createdAt  DateTime @default(now())
+  resolvedAt DateTime?
+  
+  @@index([userId, resolved])
+  @@index([severity])
+  @@map("suspicious_activities")
+}

@@ -1,0 +1,75 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Testing
+coverage
+.nyc_output
+
+# Production
+build
+dist
+.next
+out
+
+# Misc
+.DS_Store
+Thumbs.db
+*.pem
+*.key
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env.local
+.env.*.local
+.env.production.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# OS
+.AppleDouble
+.LSOverride
+*.log
+
+# Database
+postgres_data
+redis_data
+
+# Docker
+.docker
+
+# Prisma
+prisma/migrations
+.prisma
+
+# Contracts
+artifacts
+cache
+typechain-types
+
+# Hardhat
+hardhat.config.js.map
+
+# Build outputs
+.turbo
+dist
+build
+
+# Vercel
+.vercel
+
+# Sentry auth token
+.sentryclirc
